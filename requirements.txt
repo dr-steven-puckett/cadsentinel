@@ -1,0 +1,35 @@
+# FastAPI + Server
+fastapi
+uvicorn[standard]
+
+# Database ORM + Postgres
+sqlalchemy
+psycopg[binary]
+alembic
+
+# Settings / Environment
+python-dotenv
+pydantic
+pydantic-settings
+
+# DXF Tools
+ezdxf
+matplotlib
+Pillow
+
+# Vector Search Integration
+pgvector
+
+# OpenAI
+openai
+
+# Utilities
+requests
+
+# ollama-client   # uncomment if using a specific Python library for Ollama
+ollama
+
+#Langchain
+langchain
+langgraph
+

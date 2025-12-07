@@ -1,0 +1,86 @@
+# -------------------------
+# Python bytecode & cache
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# -------------------------
+# Virtual environments
+# -------------------------
+.venv/
+venv/
+env/
+.ENV/
+.venv*/
+.env*/
+
+# -------------------------
+# Environment & secrets
+# -------------------------
+.env
+.env.*
+!.env.example
+
+# -------------------------
+# Logs
+# -------------------------
+logs/
+*.log
+
+# -------------------------
+# Testing & coverage
+# -------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# -------------------------
+# Tooling
+# -------------------------
+.mypy_cache/
+.pytype/
+.dmypy.json
+ruff_cache/
+
+# -------------------------
+# IDE / Editor settings
+# -------------------------
+.vscode/
+.idea/
+*.code-workspace
+
+# -------------------------
+# OS-specific junk
+# -------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------
+# Build / Dist artifacts
+# -------------------------
+dist/
+build/
+*.egg-info/
+
+# -------------------------
+# Alembic
+# -------------------------
+alembic/versions/__pycache__/
+
+# -------------------------
+# Generated DWG artifacts
+# (CadSentinel pipeline outputs)
+# -------------------------
+ingested/
+derived/
+
+# If you want the folders to exist in the repo, you can add:
+# ingested/.gitkeep
+# derived/.gitkeep
+
