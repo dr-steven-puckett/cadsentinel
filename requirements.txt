@@ -1,35 +1,45 @@
-# FastAPI + Server
+###############################################
+# Core Framework
+###############################################
 fastapi
 uvicorn[standard]
 
-# Database ORM + Postgres
-sqlalchemy
+
+###############################################
+# Database / ORM / Migrations
+###############################################
+sqlalchemy>=2.0
 psycopg[binary]
 alembic
+pgvector
 
-# Settings / Environment
-python-dotenv
-pydantic
-pydantic-settings
 
-# DXF Tools
+###############################################
+# DXF / Drawing Processing
+###############################################
 ezdxf
 matplotlib
 Pillow
 
-# Vector Search Integration
-pgvector
 
-# OpenAI
-openai
-
-# Utilities
+###############################################
+# LLM / Embeddings
+###############################################
+openai>=1.0.0
 requests
 
-# ollama-client   # uncomment if using a specific Python library for Ollama
-ollama
 
-#Langchain
-langchain
-langgraph
+###############################################
+# Settings / Utilities
+###############################################
+pydantic>=2.7
+pydantic-settings>=2.2
+python-dotenv
+
+
+###############################################
+# Optional (future, for local LLMs like Ollama)
+###############################################
+# ollama-python
+# or a compatible HTTP client if using a custom wrapper
 

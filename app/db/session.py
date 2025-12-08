@@ -1,9 +1,33 @@
+# app/db/session.py
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from app.config import get_settings
 
 settings = get_settings()
 
-engine = create_engine(settings.database_url, future=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+engine = create_engine(
+    settings.database_url,
+    future=True,
+    pool_pre_ping=True,
+)
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    future=True,
+)
+
+
+# Dependency helper for FastAPI (we'll use this later)
+def get_db():
+    from sqlalchemy.orm import Session
+
+    db: Session = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 

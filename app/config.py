@@ -153,8 +153,7 @@ class Settings(BaseSettings):
         """
         self.ingested_dir.mkdir(parents=True, exist_ok=True)
         self.derived_dir.mkdir(parents=True, exist_ok=True)
-
-	self.ingested_dir = expand_path(self.ingested_dir)
+        self.ingested_dir = expand_path(self.ingested_dir)
         self.derived_dir = expand_path(self.derived_dir)
 
 @lru_cache
