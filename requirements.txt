@@ -3,7 +3,7 @@
 ###############################################
 fastapi
 uvicorn[standard]
-
+python-multipart
 
 ###############################################
 # Database / ORM / Migrations

@@ -1,38 +1,44 @@
 # app/api/main.py
+from __future__ import annotations
+
+import logging
+from app.logging_config import configure_logging   # ✅ import this
+
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.logging_config import setup_logging
+from app.api.routers import ingest  # add other routers here as we build them
 
-# Initialize settings and logging once at import time
+logger = logging.getLogger(__name__)
+# ✅ configure logging BEFORE doing anything else
+configure_logging()
 settings = get_settings()
-setup_logging()
 
 app = FastAPI(
     title="CadSentinel DWG Pipeline",
     version="0.1.0",
-    description="Backend service for DWG → JSON → embeddings and drawing analysis.",
+    description="DWG → DXF/PDF/PNG/JSON → embeddings pipeline for CadSentinel.",
 )
+
+# CORS – later we can restrict to your Vercel domain
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routers
+app.include_router(ingest.router)
 
 
 @app.get("/health", tags=["system"])
-def health_check():
+async def health_check() -> dict:
     """
-    Simple health check endpoint to verify that the app is running
-    and configuration can be loaded.
+    Simple health endpoint so Vercel / monitoring can check liveness.
     """
-    return {
-        "status": "ok",
-        "app": "cadsentinel",
-        "log_level": settings.log_level,
-    }
+    return {"status": "ok"}
 
-
-# Routers will be included in later phases:
-# from app.api.routers import ingest, drawings, search, chat, standards
-# app.include_router(ingest.router, prefix="/ingest", tags=["ingest"])
-# app.include_router(drawings.router, prefix="/drawings", tags=["drawings"])
-# app.include_router(search.router, prefix="/search", tags=["search"])
-# app.include_router(chat.router, prefix="/chat", tags=["chat"])
-# app.include_router(standards.router, prefix="/standards", tags=["standards"])

@@ -1,39 +1,49 @@
 # app/logging_config.py
-
 import logging
-import sys
+from pathlib import Path
 
 from app.config import get_settings
 
 
-def setup_logging() -> None:
+def configure_logging() -> None:
     """
-    Configure application-wide logging.
+    Simple logging setup:
 
-    - Uses LOG_LEVEL from settings (default INFO).
-    - Logs to stdout with timestamps and logger names.
-    - Idempotent: if handlers already exist, it does nothing.
+    - Reset any existing handlers on the root logger.
+    - Attach a StreamHandler to stdout so logs show in uvicorn's console.
+    - Also attach a FileHandler to logs/cadsentinel.log.
+    - Use LOG_LEVEL from settings (default INFO).
     """
     settings = get_settings()
 
+    level_name = getattr(settings, "log_level", "INFO")
+    level = getattr(logging, level_name.upper(), logging.INFO)
+
     root_logger = logging.getLogger()
 
-    # Avoid duplicate handlers if called multiple times
-    if root_logger.handlers:
-        return
+    # Remove any handlers uvicorn or previous config attached
+    for h in list(root_logger.handlers):
+        root_logger.removeHandler(h)
 
-    level = getattr(logging, settings.log_level.upper(), logging.INFO)
     root_logger.setLevel(level)
 
-    handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
     )
-    handler.setFormatter(formatter)
 
-    root_logger.addHandler(handler)
+    # Console handler (stdout)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
 
-    # Optional: quiet some noisy third-party loggers if needed later
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    # File handler
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_dir / "cadsentinel.log", encoding="utf-8")
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
 
+    # Optional: prove we configured logging
+    root_logger.debug("Logging configured (level=%s)", level_name)
