@@ -81,6 +81,11 @@ ingested/
 derived/
 
 # If you want the folders to exist in the repo, you can add:
-# ingested/.gitkeep
-# derived/.gitkeep
+ingested/.gitkeep
+derived/.gitkeep
 
+#--------------------------
+# Test Documents
+#---------------------------
+*.dwg
+test.*
