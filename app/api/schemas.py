@@ -100,6 +100,7 @@ class DrawingStructuredSummary(BaseModel):
     title_block: TitleBlockSummary  # <-- use the new submodel
     part_type: Optional[str] = None
     overall_description: Optional[str] = None
+    views: List[str] = []  # ⬅ NEW
     key_features: List[str] = []
     critical_dimensions: List[str] = []
     gdandt_summary: List[str] = []
