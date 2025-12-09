@@ -1,12 +1,17 @@
-# app/ingestion/dxf_render.py
 from __future__ import annotations
 
+import io
 import logging
 from pathlib import Path
 
 import ezdxf
-from ezdxf.addons.drawing import Frontend, RenderContext
-from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+from ezdxf.addons.drawing import Frontend, RenderContext, layout, pymupdf
+from ezdxf.addons.drawing.config import (
+    BackgroundPolicy,
+    ColorPolicy,
+    Configuration,
+    LineweightPolicy,
+)
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -14,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 def _load_dxf_document(dxf_path: Path) -> ezdxf.EzDxfDoc:
     """
-    Load the DXF document and audit it. We log auditor issues but do not
-    abort rendering on errors; we want a best-effort render.
+    Load the DXF document and audit it.
+
+    We log auditor issues but do not abort rendering on errors; we want
+    a best-effort render, since this is for previews/thumbnails.
     """
     if not dxf_path.is_file():
         raise FileNotFoundError(f"DXF file does not exist: {dxf_path}")
@@ -36,139 +43,87 @@ def _load_dxf_document(dxf_path: Path) -> ezdxf.EzDxfDoc:
     return doc
 
 
-def _select_best_layout(doc: ezdxf.EzDxfDoc):
+def _create_page() -> layout.Page:
     """
-    Heuristic to pick the layout to render.
+    Create a page definition for PyMuPdfBackend.
 
-    Strategy:
-    - Log all layouts for debugging (name, is_modelspace, entity counts).
-    - Prefer a paperspace layout that has at least one non-viewport entity
-      (e.g., title blocks, dimensions, text), picking the one with the most.
-    - If no such paperspace layouts exist, fall back to modelspace.
+    width=0 and height=0 tell ezdxf to auto-fit the content bounding box.
+    Units are mm; max_width / max_height roughly correspond to A0.
     """
-    modelspace = doc.modelspace()
-
-    layout_summaries = []
-    for layout in doc.layouts:
-        # Count all entities and "non-viewport" entities.
-        total = len(layout)
-        non_viewport_count = 0
-        for e in layout:
-            dxftype = e.dxftype()
-            if dxftype not in {"VIEWPORT", "ACAD_PROXY_ENTITY"}:
-                non_viewport_count += 1
-
-        layout_summaries.append(
-            (layout.name, layout.is_modelspace, total, non_viewport_count)
-        )
-
-    for name, is_model, total, non_view in layout_summaries:
-        logger.info(
-            "DXF layout '%s' (modelspace=%s): total_entities=%d, "
-            "non_viewport_entities=%d",
-            name,
-            is_model,
-            total,
-            non_view,
-        )
-
-    # Candidate paperspace layouts with at least one non-viewport entity
-    candidate_layouts = []
-    for layout in doc.layouts:
-        if layout.is_modelspace:
-            continue
-
-        non_viewport_count = 0
-        for e in layout:
-            dxftype = e.dxftype()
-            if dxftype not in {"VIEWPORT", "ACAD_PROXY_ENTITY"}:
-                non_viewport_count += 1
-
-        if non_viewport_count > 0:
-            candidate_layouts.append((layout, non_viewport_count))
-
-    if candidate_layouts:
-        # Pick the paperspace layout with the most non-viewport entities
-        best_layout, best_count = max(candidate_layouts, key=lambda tup: tup[1])
-        logger.info(
-            "Selected paperspace layout '%s' for rendering "
-            "(non_viewport_entities=%d).",
-            best_layout.name,
-            best_count,
-        )
-        return best_layout
-
-    # Fallback: no good paperspace layout, use modelspace
-    logger.info(
-        "No suitable paperspace layout with non-viewport entities found; "
-        "rendering modelspace only (layout='%s').",
-        modelspace.name,
+    return layout.Page(
+        width=0,                # auto-detect from content
+        height=0,               # auto-detect from content
+        units=layout.Units.mm,  # treat drawing units as millimeters
+        margins=layout.Margins.all(0),
+        max_width=1189,         # ~A0 width in mm
+        max_height=841,         # ~A0 height in mm
     )
-    return modelspace
 
 
-
-def _render_dxf_to_matplotlib_figure(dxf_path: Path, dpi: int = 300):
+def _create_settings(scale: float = 1.0) -> layout.Settings:
     """
-    Load a DXF and render the chosen layout to a Matplotlib figure.
-    We explicitly force all layers to be visible, including the DIMENSIONS layer,
-    so that annotations and title blocks show up in the rendered output.
+    Layout settings for the render. For now we use a 1:1 scale; adjust later
+    if you want to change plotted size.
     """
-    logger.info("Loading DXF file for rendering: %s", dxf_path)
-    doc, layout = _load_dxf_document(dxf_path)
+    return layout.Settings(scale=scale)
 
-    # Create Matplotlib figure/axes
-    fig = plt.figure(figsize=(11, 8.5), dpi=dpi)
-    ax = fig.add_subplot(1, 1, 1)
 
-    # Build a render context
+def _create_config() -> Configuration:
+    """
+    Rendering configuration: white background, colored entities, relative
+    lineweights. This matches what you tested in the standalone script.
+    """
+    return Configuration(
+        background_policy=BackgroundPolicy.WHITE,
+        color_policy=ColorPolicy.COLOR,
+        lineweight_policy=LineweightPolicy.RELATIVE,
+        lineweight_scaling=1.0,
+    )
+
+
+def _render_to_backend(
+    dxf_path: Path,
+) -> tuple[ezdxf.EzDxfDoc, pymupdf.PyMuPdfBackend]:
+    """
+    Core rendering step:
+
+    - Load DXF
+    - Build RenderContext + PyMuPdfBackend
+    - Draw modelspace into the backend
+
+    We render **modelspace** because that's what gave you the exact DWG
+    replica in your test.
+    """
+    doc = _load_dxf_document(dxf_path)
+    msp = doc.modelspace()
+
+    backend = pymupdf.PyMuPdfBackend()
     ctx = RenderContext(doc)
-    ctx.set_current_layout(layout)
+    config = _create_config()
 
-    # 🔧 NEW: force all layers (including DIMENSIONS) to be visible
-    for name, props in ctx.layers.items():
-        # props is a LayerProperties object
-        props.is_off = False
-        props.is_frozen = False
+    frontend = Frontend(ctx, backend, config=config)
+    logger.info("Drawing DXF modelspace to PyMuPdf backend: %s", dxf_path)
+    frontend.draw_layout(msp)
 
-    # Optionally, log that DIMENSIONS is on:
-    dim_props = ctx.layers.get("DIMENSIONS") or ctx.layers.get("Dimensions")
-    if dim_props:
-        logger.debug(
-            "DIMENSIONS layer visible: is_off=%s, is_frozen=%s",
-            dim_props.is_off,
-            dim_props.is_frozen,
-        )
-    else:
-        logger.debug("No 'DIMENSIONS' layer found in ctx.layers; available: %s", list(ctx.layers.keys()))
-
-    # Render
-    backend = MatplotlibBackend(ax)  # note: just (ax), not (ctx, ax)
-    frontend = Frontend(ctx, backend)
-    logger.info(
-        "Drawing DXF layout '%s' (paperspace=%s) to Matplotlib canvas: %s",
-        layout.name,
-        getattr(layout, "paperspace", False),
-        dxf_path,
-    )
-    frontend.draw_layout(layout, finalize=True)
-
-    ax.set_aspect("equal")
-    ax.axis("off")
-    fig.tight_layout(pad=0)
-
-    return fig, ax
+    return doc, backend
 
 
 def render_dxf_to_pdf(dxf_path: Path, pdf_path: Path, dpi: int = 300) -> None:
-    logger.info("Rendering DXF→PDF: %s -> %s (dpi=%d)", dxf_path, pdf_path, dpi)
+    """
+    Render DXF → vector PDF using ezdxf + PyMuPdfBackend.
 
-    fig, _ = _render_dxf_to_matplotlib_figure(dxf_path, dpi=dpi)
+    dpi is not strictly used for vector PDF resolution, but we keep it in
+    the signature to stay parallel with the PNG function.
+    """
+    logger.info("Rendering DXF→PDF: %s -> %s", dxf_path, pdf_path)
 
-    import matplotlib.pyplot as plt
+    _, backend = _render_to_backend(dxf_path)
+    page = _create_page()
+    settings = _create_settings(scale=1.0)
 
-    fig.savefig(pdf_path, dpi=dpi)
-    plt.close(fig)
+    pdf_bytes = backend.get_pdf_bytes(page, settings=settings)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(pdf_bytes)
 
     if pdf_path.is_file():
         logger.info(
@@ -177,18 +132,41 @@ def render_dxf_to_pdf(dxf_path: Path, pdf_path: Path, dpi: int = 300) -> None:
             pdf_path.stat().st_size / 1024.0,
         )
     else:
-        logger.warning("PDF rendering reported success but file not found: %s", pdf_path)
+        logger.warning(
+            "PDF rendering reported success but file not found: %s",
+            pdf_path,
+        )
 
 
-def render_dxf_to_png(dxf_path: Path, png_path: Path, dpi: int = 300) -> None:
+def render_dxf_to_png(
+    dxf_path: Path,
+    png_path: Path,
+    dpi: int = 300,
+) -> None:
+    """
+    Render DXF → full-size PNG using the same PyMuPdf render as PDF.
+
+    We use PyMuPdfBackend.get_pixmap_bytes(...) with fmt='png' to get a
+    bitmap from the same vector render used for PDF. DPI controls raster
+    resolution (effective image size).
+    """
     logger.info("Rendering DXF→PNG: %s -> %s (dpi=%d)", dxf_path, png_path, dpi)
 
-    fig, _ = _render_dxf_to_matplotlib_figure(dxf_path, dpi=dpi)
+    _, backend = _render_to_backend(dxf_path)
+    page = _create_page()
+    settings = _create_settings(scale=1.0)
 
-    import matplotlib.pyplot as plt
+    # Direct PNG bytes from backend; dpi affects pixel dimensions.
+    png_bytes = backend.get_pixmap_bytes(
+        page,
+        fmt="png",
+        settings=settings,
+        dpi=dpi,
+        alpha=False,
+    )
 
-    fig.savefig(png_path, dpi=dpi)
-    plt.close(fig)
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    png_path.write_bytes(png_bytes)
 
     if png_path.is_file():
         logger.info(
@@ -197,14 +175,21 @@ def render_dxf_to_png(dxf_path: Path, png_path: Path, dpi: int = 300) -> None:
             png_path.stat().st_size / 1024.0,
         )
     else:
-        logger.warning("PNG rendering reported success but file not found: %s", png_path)
+        logger.warning(
+            "PNG rendering reported success but file not found: %s",
+            png_path,
+        )
 
 
 def generate_thumbnail_from_png(
     png_path: Path,
     thumbnail_path: Path,
-    max_size: int = 512,
+    max_size: int = 256,
 ) -> None:
+    """
+    Downscale a full-size PNG to a square-bounded thumbnail, preserving
+    aspect ratio. This is used by the ingestion pipeline for quick previews.
+    """
     if not png_path.is_file():
         raise FileNotFoundError(f"PNG file does not exist: {png_path}")
 
@@ -215,6 +200,8 @@ def generate_thumbnail_from_png(
         max_size,
     )
 
+    thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+
     with Image.open(png_path) as img:
         img.thumbnail((max_size, max_size))
         img.save(thumbnail_path, format="PNG")
@@ -224,4 +211,3 @@ def generate_thumbnail_from_png(
         thumbnail_path,
         thumbnail_path.stat().st_size / 1024.0,
     )
-

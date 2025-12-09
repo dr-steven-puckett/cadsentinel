@@ -20,6 +20,7 @@ pgvector
 ezdxf
 matplotlib
 Pillow
+pymupdf
 
 
 ###############################################
