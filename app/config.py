@@ -43,12 +43,15 @@ class Settings(BaseSettings):
     # -------------------------
     # OpenAI / LLM
     # -------------------------
-    openai_api_key: str = Field(
-        ...,
-        alias="OPENAI_API_KEY",
-        description="OpenAI API key used for embeddings and chat (when provider is OpenAI).",
+    OPENAI_API_KEY: str | None = None
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
     )
 
+    
     embedding_model_name: str = Field(
         "text-embedding-3-large",
         alias="EMBEDDING_MODEL_NAME",
@@ -157,6 +160,7 @@ class Settings(BaseSettings):
         self.derived_dir = expand_path(self.derived_dir)
 
 @lru_cache
+
 def get_settings() -> Settings:
     """
     Return a cached Settings instance.

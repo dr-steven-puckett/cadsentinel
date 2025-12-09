@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional,Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-
 
 LogLevel = Literal["info", "warning", "error"]
 
@@ -71,4 +70,39 @@ class IngestResponse(BaseModel):
         None,
         description="Locations of created artifacts (if any).",
     )
+
+class TitleBlockSummary(BaseModel):
+    part_name: Optional[str] = None
+    drawing_number: Optional[str] = None
+    revision: Optional[str] = None
+    scale: Optional[str] = None
+    units: Optional[str] = None
+    projection: Optional[str] = None
+    material: Optional[str] = None
+    standard_references: List[str] = []  # <-- list, not string
+
+
+class SummarizeDrawingRequest(BaseModel):
+    document_id: str = Field(..., description="Stable SHA256 document ID for the drawing")
+    json_path: str = Field(..., description="Filesystem path to the DWG→JSON file")
+    pdf_path: str = Field(..., description="Filesystem path to the DXF→PDF file")
+
+class SummarizeDrawingResponse(BaseModel):
+    document_id: str
+    structured_summary: DrawingStructuredSummary
+    long_form_description: str
+    raw_model_output: Optional[str] = Field(
+        None, description="Raw LLM response text (for debugging/inspection)."
+    )
+
+class DrawingStructuredSummary(BaseModel):
+    drawing_id: str
+    title_block: TitleBlockSummary  # <-- use the new submodel
+    part_type: Optional[str] = None
+    overall_description: Optional[str] = None
+    key_features: List[str] = []
+    critical_dimensions: List[str] = []
+    gdandt_summary: List[str] = []
+    manufacturing_notes: List[str] = []
+    known_gaps_or_ambiguities: List[str] = []
 
