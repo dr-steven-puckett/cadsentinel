@@ -1,0 +1,15 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17        # Postgres 17 with pgvector built in
+    container_name: cadsentinel-db
+    environment:
+      POSTGRES_USER: cadsentinel
+      POSTGRES_PASSWORD: cadsentinel
+      POSTGRES_DB: cadsentinel
+    ports:
+      - "5432:5432"                      # change host port if 5432 is already used
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
