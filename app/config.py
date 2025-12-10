@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # -------------------------
     # OpenAI / LLM
     # -------------------------
+    ai_provider: str = "openai"
+
     OPENAI_API_KEY: str | None = None
     
     model_config = SettingsConfigDict(
@@ -53,7 +55,7 @@ class Settings(BaseSettings):
 
     
     embedding_model_name: str = Field(
-        "text-embedding-3-large",
+        "text-embedding-3-small",
         alias="EMBEDDING_MODEL_NAME",
         description="Default embedding model name for OpenAI provider.",
     )
