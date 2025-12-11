@@ -28,8 +28,18 @@ for f in "${dwg_files[@]}"; do
   fname=$(basename "$f")
   echo "[$i/${count}] Ingesting: ${fname}"
 
+  # Extra safety: check that the file is readable
+  if [[ ! -r "$f" ]]; then
+    echo "  ❌ File is not readable or does not exist: $f"
+    echo
+    continue
+  fi
+
+  # Build the -F argument safely, even with spaces/commas/etc.
+  printf -v form_arg 'file=@%s' "$f"
+
   # Do the POST, capturing body + HTTP status code
-  response=$(curl -sS -w "%{http_code}" -F "file=@${f}" "${API_URL}")
+  response=$(curl -sS -w "%{http_code}" -F "$form_arg" "${API_URL}" || true)
   http_code="${response: -3}"
   body="${response:0:${#response}-3}"
 
@@ -55,4 +65,3 @@ for f in "${dwg_files[@]}"; do
 done
 
 echo "=== DWG batch ingestion completed for ${count} file(s). ==="
-

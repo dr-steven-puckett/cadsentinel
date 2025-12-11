@@ -683,10 +683,14 @@ class OpenAISummaryProvider(SummaryProvider):
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     """
-    OpenAI-based embedding provider.
+    DEPRECATED: Ingestion and search now use app.services.embeddings.embed_texts()
+    as the single embedding entrypoint.
 
-    Uses `text-embedding-3-small`, which returns 1536-dimensional vectors,
-    matching the `VECTOR(1536)` column in PostgreSQL.
+    This class is kept only for backward compatibility or for potential reuse in
+    specialized tools. Prefer embed_texts() for any new code paths.
+
+    Historically, this used the OpenAI `text-embedding-3-small` model
+    (1536-dimensional vectors) to match the `VECTOR(1536)` column in PostgreSQL.
     """
 
     def __init__(self, model_name: str = "text-embedding-3-small") -> None:

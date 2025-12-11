@@ -15,6 +15,7 @@ from app.api.schemas import (
 )
 from app.services.embeddings import embed_texts
 
+DEFAULT_SCORE_THRESHOLD: float = 0.15
 
 # ---------------------------------------------------------
 # Helpers: thumbnail + geometry enrichment
@@ -146,10 +147,18 @@ async def vector_search_embeddings(
     thumb_map = _load_thumbnails_for_embeddings(db, embeddings)
     geom_map = _load_geometry_for_embeddings(db, embeddings)
 
+    # Decide threshold: request value or default
+    effective_threshold = (
+        req.score_threshold
+        if req.score_threshold is not None
+        else DEFAULT_SCORE_THRESHOLD
+    )
+
+
     results: List[ChunkSearchResult] = []
     for emb, similarity in rows:
         sim_val = float(similarity)
-        if req.score_threshold is not None and sim_val < req.score_threshold:
+        if sim_val < effective_threshold:
             continue
 
         results.append(
@@ -222,13 +231,21 @@ async def hybrid_search_embeddings(
 
     fused_results: List[Tuple[ChunkSearchResult, float]] = []
 
+    # Decide threshold: request value or default
+    effective_threshold = (
+        req.score_threshold
+        if req.score_threshold is not None
+        else DEFAULT_SCORE_THRESHOLD
+    )
+
     for emb, vector_score, keyword_score in rows:
         v = float(vector_score)
         k = float(keyword_score or 0.0)
         fused = req.alpha * v + (1.0 - req.alpha) * k
 
-        if req.score_threshold is not None and fused < req.score_threshold:
+        if fused < effective_threshold:
             continue
+
 
         result = ChunkSearchResult(
             id=emb.id,

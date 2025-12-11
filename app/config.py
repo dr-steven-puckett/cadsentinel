@@ -46,30 +46,30 @@ class Settings(BaseSettings):
     ai_provider: str = "openai"
 
     OPENAI_API_KEY: str | None = None
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
 
-    
-    embedding_model_name: str = Field(
+    # OpenAI model selection
+    openai_embedding_model: str = Field(
         "text-embedding-3-small",
-        alias="EMBEDDING_MODEL_NAME",
-        description="Default embedding model name for OpenAI provider.",
+        alias="OPENAI_EMBEDDING_MODEL",
+        description="Embedding model name for OpenAI provider.",
     )
 
-    # Provider selection (Phase 11-ready)
+    openai_chat_model: str = Field(
+        "gpt-4.1",
+        alias="OPENAI_CHAT_MODEL",
+        description="Chat model name for OpenAI provider (e.g., gpt-4.1, gpt-5.1).",
+    )
+
+    # Provider selection
     embedding_provider_name: str = Field(
         "openai",
         alias="EMBEDDING_PROVIDER",
-        description='Embedding provider: "openai" or "ollama" (future).',
+        description='Embedding provider: "openai" or "ollama".',
     )
     chat_provider_name: str = Field(
         "openai",
         alias="CHAT_PROVIDER",
-        description='Chat provider: "openai" or "ollama" (future).',
+        description='Chat provider: "openai" or "ollama".',
     )
 
     # -------------------------

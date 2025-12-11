@@ -1,13 +1,14 @@
 # app/services/chat_drawing.py
-from __future__ import annotations
-
 from typing import List, Tuple
 
+import httpx
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError, BadRequestError
 
-from openai import AsyncOpenAI
-
+from app.config import get_settings
+from app.services.security_mode import get_effective_providers
 from app.db.models import (
     Embedding,
     Dimension,
@@ -23,6 +24,13 @@ from app.api.schemas import (
 )
 from app.services.embeddings import embed_texts
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+settings = get_settings()
+
+_openai_chat_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 # ---------------------------------------------------------
 # Helpers
@@ -176,17 +184,13 @@ def _resolve_drawing_version_id(
             select(DrawingVersion)
             .join(Drawing, DrawingVersion.drawing_id == Drawing.id)
             .where(Drawing.document_id_sha == req.document_id)
-            .order_by(DrawingVersion.created_at.desc())
+            .order_by(DrawingVersion.ingested_at.desc())
         )
         dv = db.execute(stmt).scalars().first()
         if not dv:
             raise ValueError(f"No drawing version found for document_id={req.document_id!r}")
         # We already know the hash from the request
         return dv.id, req.document_id
-
-    # Neither provided
-    raise ValueError("Either drawing_version_id or document_id must be provided.")
-
 
 def _build_context_text(
     summaries: List[RetrievedContextItem],
@@ -243,6 +247,81 @@ def _build_system_prompt() -> str:
         "5. Be concise but technically clear. Use bullets and short paragraphs.\n"
     )
 
+async def _call_chat_model(system_prompt: str, user_content: str) -> str:
+    """
+    Dispatch chat completion to the provider implied by the current
+    security mode:
+
+      - secure     → Ollama
+      - not_secure → OpenAI
+
+    Any upstream errors are converted to HTTPException so the frontend sees
+    a clean 5xx error instead of a raw stack trace.
+    """
+    providers = get_effective_providers()
+    provider = providers["chat"].lower()
+
+    if provider == "openai":
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
+        try:
+            completion = await _openai_chat_client.chat.completions.create(
+                model=settings.openai_chat_model,
+                messages=messages,
+                temperature=0.2,
+            )
+        except (RateLimitError, APIConnectionError, APIError, BadRequestError) as e:
+            logger.exception("OpenAI chat error: %r", e)
+            # Surface a clean 502 to the frontend
+            raise HTTPException(
+                status_code=502,
+                detail=f"Upstream AI model error: {type(e).__name__}",
+            )
+
+        return completion.choices[0].message.content or ""
+
+    elif provider == "ollama":
+        if not settings.ollama_base_url or not settings.ollama_chat_model:
+            raise RuntimeError(
+                "Ollama chat provider selected but OLLAMA_BASE_URL or "
+                "OLLAMA_CHAT_MODEL is not configured."
+            )
+
+        async with httpx.AsyncClient(base_url=str(settings.ollama_base_url)) as client:
+            payload = {
+                "model": settings.ollama_chat_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            }
+            try:
+                resp = await client.post("/api/chat", json=payload)
+                resp.raise_for_status()
+            except httpx.HTTPError as e:
+                logger.exception("Ollama chat HTTP error: %r", e)
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Ollama chat error: {type(e).__name__}",
+                )
+
+            data = resp.json()
+            # Example expected shape: {"message": {"role": "assistant", "content": "..."}}
+            msg = data.get("message", {})
+            content = msg.get("content")
+            if not content:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Ollama chat error: empty or malformed response",
+                )
+            return content
+
+    else:
+        raise RuntimeError(f"Unsupported chat provider: {provider!r}")
+
 
 # ---------------------------------------------------------
 # Main entry: chat_with_drawing
@@ -276,37 +355,41 @@ async def chat_with_drawing(
     note_items = _build_retrieved_items(db, note_pairs)
     dim_items = _build_retrieved_items(db, dim_pairs)
 
-    # 4) Build context text for the LLM
-    context_text = _build_context_text(summary_items, note_items, dim_items)
-
-    # 5) Call OpenAI (ChatGPT-5.1 or equivalent)
-    client = AsyncOpenAI()  # uses OPENAI_API_KEY env var
-
-    system_prompt = _build_system_prompt()
-
-    messages = [
-        {
-            "role": "system",
-            "content": system_prompt,
-        },
-        {
-            "role": "user",
-            "content": (
-                f"User question:\n{req.user_message}\n\n"
-                "Drawing context (summaries, notes, dimensions):\n"
-                f"{context_text}"
-            ),
-        },
-    ]
-
-    completion = await client.chat.completions.create(
-        model="gpt-4.1",  # or "gpt-5.1" when available in your API account
-        messages=messages,
-        temperature=0.2,
+    logger.info(
+        "chat_with_drawing: dv_id=%s | summaries=%d notes=%d dims=%d",
+        drawing_version_id,
+        len(summary_items),
+        len(note_items),
+        len(dim_items),
     )
 
-    assistant_reply = completion.choices[0].message.content or ""
+    # 3.5) If we have no context at all, don't bother calling the LLM
+    if not (summary_items or note_items or dim_items):
+        return ChatDrawingResponse(
+            assistant_reply=(
+                "I couldn’t find any summaries, notes, or dimensions associated with "
+                f"this drawing (drawing_version_id={drawing_version_id}). "
+                "It may not have been fully processed yet, or no extractable data was found."
+            ),
+            drawing_version_id=drawing_version_id,
+            document_id=document_id,
+            contexts=[],
+            open_in_documents_url=f"/documents/{drawing_version_id}",
+        )
 
+    # 4) Build context text for the LLM
+    context_text = _build_context_text(summary_items, note_items, dim_items)
+    system_prompt = _build_system_prompt()
+
+    user_content = (
+        f"User question:\n{req.user_message}\n\n"
+        "Drawing context (summaries, notes, dimensions):\n"
+        f"{context_text}"
+    )
+
+    # 5) Provider-agnostic call (OpenAI or Ollama based on security mode)
+    assistant_reply = await _call_chat_model(system_prompt, user_content)
+    
     # 6) Aggregate all context items into one list
     all_items: List[RetrievedContextItem] = []
     all_items.extend(summary_items)
