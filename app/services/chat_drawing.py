@@ -154,33 +154,37 @@ def _resolve_drawing_version_id(
     Resolve which drawing_version_id to use from the request.
     Priority:
       1. explicit drawing_version_id
-      2. document_id (hash) → latest DrawingVersion for that document
+      2. document_id (hash) → latest DrawingVersion for that document_id_sha
     """
+    # Case 1: explicit drawing_version_id
     if req.drawing_version_id is not None:
         dv = db.get(DrawingVersion, req.drawing_version_id)
         if not dv:
             raise ValueError(f"drawing_version_id={req.drawing_version_id} not found")
-        # Try to fetch document_id from related Drawing if available
+
         document_id: str | None = None
         if dv.drawing_id is not None:
             drawing = db.get(Drawing, dv.drawing_id)
-            if drawing and getattr(drawing, "document_id", None):
-                document_id = drawing.document_id
+            if drawing and getattr(drawing, "document_id_sha", None):
+                document_id = drawing.document_id_sha
+
         return dv.id, document_id
 
+    # Case 2: document_id (really document_id_sha in the DB)
     if req.document_id:
-        # Adjust this filter to whatever field stores your hash/document_id
         stmt = (
             select(DrawingVersion)
             .join(Drawing, DrawingVersion.drawing_id == Drawing.id)
-            .where(Drawing.document_id == req.document_id)
+            .where(Drawing.document_id_sha == req.document_id)
             .order_by(DrawingVersion.created_at.desc())
         )
         dv = db.execute(stmt).scalars().first()
         if not dv:
             raise ValueError(f"No drawing version found for document_id={req.document_id!r}")
+        # We already know the hash from the request
         return dv.id, req.document_id
 
+    # Neither provided
     raise ValueError("Either drawing_version_id or document_id must be provided.")
 
 

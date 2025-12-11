@@ -24,7 +24,6 @@ from app.ingestion.hashing import compute_document_id
 from app.services.etl_dwg import run_drawing_etl
 from app.services.ai_providers import (
     build_summary_provider,
-    build_embedding_provider,
 )
 
 from app.api.schemas import (
@@ -204,14 +203,14 @@ async def ingest_dwg_endpoint(
         # ======================================================================
         # 6. ETL (DB insertions, summary, embeddings)
         # ======================================================================
+        # 6. ETL (DB insertions, summary, embeddings)
         events.append(_event("etl", "Starting ETL processing..."))
         provider_name = getattr(settings, "ai_provider", "openai")
 
         summary_provider = build_summary_provider(provider_name)
-        embedding_provider = build_embedding_provider(provider_name)
-        
+
         try:
-            etl_result = run_drawing_etl(
+            etl_result = await run_drawing_etl(
                 db=db,
                 document_id=document_id,
                 source_filename=file.filename,
@@ -222,9 +221,8 @@ async def ingest_dwg_endpoint(
                 png_path=png_path,
                 thumbnail_path=thumb_path,
                 summary_provider=summary_provider,
-                embedding_provider=embedding_provider,
             )
-
+            
             events.append(
                 _event(
                     "etl",

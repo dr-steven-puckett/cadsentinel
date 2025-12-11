@@ -18,10 +18,9 @@ from app.db.models import (
     Embedding,
 )
 
-from app.services.ai_providers import (
-    SummaryProvider,
-    EmbeddingProvider,
-)
+from app.services.ai_providers import SummaryProvider
+from app.services.embeddings import embed_texts, EMBEDDING_MODEL
+
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ class ETLResult:
 # MAIN ETL FUNCTION
 # ======================================================================
 
-def run_drawing_etl(
+async def run_drawing_etl(
     *,
     db: Session,
     document_id: str,
@@ -78,8 +77,8 @@ def run_drawing_etl(
     png_path: Optional[Path],
     thumbnail_path: Optional[Path],
     summary_provider: SummaryProvider,
-    embedding_provider: EmbeddingProvider,
 ) -> ETLResult:
+
     """
     The core ETL for CadSentinel.
 
@@ -238,14 +237,12 @@ def run_drawing_etl(
     # ------------------------------------------------------------------
     # 6. Generate embeddings
     # ------------------------------------------------------------------
-    embeddings_created = _generate_all_embeddings(
+    embeddings_created = await _generate_all_embeddings(
         db=db,
         version_id=version.id,
         summary_row=summary_row,
-        dims_inserted=dims_inserted,
-        notes_inserted=notes_inserted,
-        embedding_provider=embedding_provider,
     )
+
 
     # ------------------------------------------------------------------
     # 7. Commit ETL
@@ -360,16 +357,12 @@ def _infer_note_type(ent: Dict[str, Any]) -> str:
     return "general"
 
 
-def _generate_all_embeddings(
+async def _generate_all_embeddings(
     *,
     db: Session,
     version_id: int,
     summary_row: DrawingSummary,
-    dims_inserted: int,
-    notes_inserted: int,
-    embedding_provider: EmbeddingProvider,
 ) -> int:
-
     embeddings_created = 0
 
     # -----------------------------------------------------
@@ -420,10 +413,10 @@ def _generate_all_embeddings(
         return 0
 
     # -----------------------------------------------------
-    # 2. Batch embed via provider.embed_many
+    # 2. Batch embed via shared embed_texts()
     # -----------------------------------------------------
     texts = [t for (_, _, t) in content_pieces]
-    vectors = embedding_provider.embed_many(texts)
+    vectors = await embed_texts(texts)
 
     if len(vectors) != len(content_pieces):
         logger.warning(
@@ -445,7 +438,7 @@ def _generate_all_embeddings(
             source_ref_id=ref_id,
             content=text,
             embedding=vec,
-            model_name=embedding_provider.model_name,
+            model_name=EMBEDDING_MODEL,  # from app.services.embeddings
         )
         db.add(row)
         embeddings_created += 1

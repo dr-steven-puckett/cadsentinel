@@ -89,3 +89,4 @@ derived/.gitkeep
 #---------------------------
 *.dwg
 test.*
+drawings/
