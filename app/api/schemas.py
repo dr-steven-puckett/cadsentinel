@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional,Any, Dict, List, Optional
+from typing import Literal, Optional, Any, Dict, List
+import typing as t
 
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Shared / Pipeline Schemas
+# ---------------------------------------------------------------------------
 
 LogLevel = Literal["info", "warning", "error"]
 
@@ -28,7 +33,7 @@ class PipelineEvent(BaseModel):
     )
     message: str = Field(
         ...,
-        description="Human-readable message for the UI."
+        description="Human-readable message for the UI.",
     )
 
 
@@ -52,7 +57,7 @@ class IngestResponse(BaseModel):
     """
     success: bool = Field(
         ...,
-        description="True if ingestion finished without a fatal error."
+        description="True if ingestion finished without a fatal error.",
     )
     document_id: Optional[str] = Field(
         None,
@@ -62,14 +67,19 @@ class IngestResponse(BaseModel):
         ...,
         description="Top-level success or error message.",
     )
-    events: list[PipelineEvent] = Field(
+    events: List[PipelineEvent] = Field(
         default_factory=list,
-        description="Timeline of pipeline events for the UI."
+        description="Timeline of pipeline events for the UI.",
     )
     artifacts: Optional[IngestArtifacts] = Field(
         None,
         description="Locations of created artifacts (if any).",
     )
+
+
+# ---------------------------------------------------------------------------
+# Drawing Summarization Schemas
+# ---------------------------------------------------------------------------
 
 class TitleBlockSummary(BaseModel):
     part_name: Optional[str] = None
@@ -79,7 +89,20 @@ class TitleBlockSummary(BaseModel):
     units: Optional[str] = None
     projection: Optional[str] = None
     material: Optional[str] = None
-    standard_references: List[str] = []  # <-- list, not string
+    standard_references: List[str] = []  # list of standard references
+
+
+class DrawingStructuredSummary(BaseModel):
+    drawing_id: str
+    title_block: TitleBlockSummary
+    part_type: Optional[str] = None
+    overall_description: Optional[str] = None
+    views: List[str] = []
+    key_features: List[str] = []
+    critical_dimensions: List[str] = []
+    gdandt_summary: List[str] = []
+    manufacturing_notes: List[str] = []
+    known_gaps_or_ambiguities: List[str] = []
 
 
 class SummarizeDrawingRequest(BaseModel):
@@ -87,23 +110,98 @@ class SummarizeDrawingRequest(BaseModel):
     json_path: str = Field(..., description="Filesystem path to the DWG→JSON file")
     pdf_path: str = Field(..., description="Filesystem path to the DXF→PDF file")
 
+
 class SummarizeDrawingResponse(BaseModel):
     document_id: str
     structured_summary: DrawingStructuredSummary
     long_form_description: str
     raw_model_output: Optional[str] = Field(
-        None, description="Raw LLM response text (for debugging/inspection)."
+        None,
+        description="Raw LLM response text (for debugging/inspection).",
     )
 
-class DrawingStructuredSummary(BaseModel):
-    drawing_id: str
-    title_block: TitleBlockSummary  # <-- use the new submodel
-    part_type: Optional[str] = None
-    overall_description: Optional[str] = None
-    views: List[str] = []  # ⬅ NEW
-    key_features: List[str] = []
-    critical_dimensions: List[str] = []
-    gdandt_summary: List[str] = []
-    manufacturing_notes: List[str] = []
-    known_gaps_or_ambiguities: List[str] = []
 
+# ---------------------------------------------------------------------------
+# Retrieval / Search Schemas (for /search/vector and /search/hybrid)
+# ---------------------------------------------------------------------------
+
+class ChunkSearchFilters(BaseModel):
+    """
+    Optional filters for narrowing vector/hybrid search.
+    - drawing_version_id: only search within a specific version
+    - source_types: list of embedding.source_type values
+      e.g. ["summary", "note", "dimension"]
+    """
+    drawing_version_id: int | None = None
+    source_types: List[str] | None = None
+
+
+class VectorSearchRequest(BaseModel):
+    """
+    Request body for POST /search/vector
+    """
+    query_text: str = Field(..., min_length=1)
+    filters: ChunkSearchFilters | None = None
+    top_k: int = Field(20, ge=1, le=200)
+    score_threshold: float | None = Field(
+        None,
+        description="Filter out matches below this score (0..1).",
+        ge=-1.0,
+        le=1.0,
+    )
+
+
+class HybridSearchRequest(BaseModel):
+    """
+    Request body for POST /search/hybrid
+
+    alpha controls fusion:
+        fused = alpha * vector_score + (1 - alpha) * keyword_score
+    """
+    query_text: str = Field(..., min_length=1)
+    filters: ChunkSearchFilters | None = None
+    top_k: int = Field(20, ge=1, le=200)
+    score_threshold: float | None = Field(
+        None,
+        description="Filter on fused score (0..1).",
+        ge=-1.0,
+        le=1.0,
+    )
+    alpha: float = Field(
+        0.7,
+        ge=0.0,
+        le=1.0,
+        description="Weight for vector vs keyword similarity (alpha * vector + (1-alpha) * keyword).",
+    )
+
+
+class ChunkSearchResult(BaseModel):
+    """
+    Single hit returned from vector/hybrid search.
+
+    - id: embeddings.id
+    - source_type: embeddings.source_type (e.g., 'note', 'dimension', 'summary')
+    - source_ref_id: the linked Dimension/Note/Summary id (if available)
+    - geometry_index: geometry + json_index info so the UI can highlight it
+    - thumbnail_url: quick drawing preview
+    """
+    id: int
+    matched_text: str
+    source_type: str
+    drawing_version_id: int
+    source_ref_id: int | None = None
+
+    similarity_score: float
+    thumbnail_url: str | None = None
+
+    geometry_index: Dict[str, Any] | None = None
+    metadata: Dict[str, Any] | None = None
+
+
+class ChunkSearchResponse(BaseModel):
+    """
+    Response envelope for vector/hybrid search.
+    """
+    results: List[ChunkSearchResult]
+    total_returned: int
+    mode: t.Literal["vector", "hybrid"]

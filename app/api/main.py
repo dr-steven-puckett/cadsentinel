@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.logging_config import configure_logging
 from app.config import get_settings
 from app.api.routers import ingest, drawings  # ⬅ add drawings
+from app.api.routers import search as search_routes
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,10 @@ app.add_middleware(
 # Routers
 app.include_router(ingest.router)
 app.include_router(drawings.router)  # ⬅ exposes /drawings/summarize
+app.include_router(search_routes.router)
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
     return {"status": "ok"}
+
+
