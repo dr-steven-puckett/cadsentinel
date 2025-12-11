@@ -205,3 +205,65 @@ class ChunkSearchResponse(BaseModel):
     results: List[ChunkSearchResult]
     total_returned: int
     mode: t.Literal["vector", "hybrid"]
+
+# ---------------------------------------------------------------------------
+# Chat-with-the-drawing Schemas
+# ---------------------------------------------------------------------------
+
+class RetrievedContextItem(BaseModel):
+    """
+    One retrieved chunk (summary, note, dimension) used as context for chat.
+    Also used so the UI can highlight / deep-link the source.
+    """
+    chunk_id: int
+    source_type: str
+    drawing_version_id: int
+    source_ref_id: int | None = None
+
+    matched_text: str
+    similarity_score: float
+
+    geometry_index: Dict[str, Any] | None = None
+    thumbnail_url: str | None = None
+
+
+class ChatDrawingRequest(BaseModel):
+    """
+    Request body for POST /chat/drawing.
+    You can supply either drawing_version_id directly or a document_id hash
+    (then we resolve to the latest version).
+    """
+    user_message: str = Field(..., description="User's question about the drawing.")
+
+    document_id: str | None = Field(
+        None,
+        description="Stable DWG document hash. If provided, server will resolve to a drawing_version_id.",
+    )
+    drawing_version_id: int | None = Field(
+        None,
+        description="Specific drawing version to chat with.",
+    )
+
+    max_summary_chunks: int = Field(3, ge=0, le=20)
+    max_note_chunks: int = Field(8, ge=0, le=50)
+    max_dimension_chunks: int = Field(12, ge=0, le=100)
+
+
+class ChatDrawingResponse(BaseModel):
+    """
+    Response from POST /chat/drawing.
+    Contains the assistant's reply plus backreferences to retrieved chunks.
+    """
+    assistant_reply: str
+    drawing_version_id: int
+    document_id: str | None = None
+
+    contexts: List[RetrievedContextItem] = Field(
+        default_factory=list,
+        description="Chunks (summaries, notes, dimensions) used as context.",
+    )
+
+    open_in_documents_url: str | None = Field(
+        None,
+        description="Deep link for the frontend Documents tab, e.g. /documents/{drawing_version_id}.",
+    )

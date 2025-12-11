@@ -9,6 +9,8 @@ from app.logging_config import configure_logging
 from app.config import get_settings
 from app.api.routers import ingest, drawings  # ⬅ add drawings
 from app.api.routers import search as search_routes
+from app.api.routers import chat as chat_routes
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ app.add_middleware(
 app.include_router(ingest.router)
 app.include_router(drawings.router)  # ⬅ exposes /drawings/summarize
 app.include_router(search_routes.router)
+app.include_router(chat_routes.router)
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
