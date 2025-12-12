@@ -7,10 +7,22 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.logging_config import configure_logging
 from app.config import get_settings
-from app.api.routers import ingest, drawings  # ⬅ add drawings
+
+from app.api.routers import ingest
+from app.api.routers import drawings
 from app.api.routers import search as search_routes
 from app.api.routers import chat as chat_routes
 from app.api.routers import config as config_routes
+
+# New routers for extended API layer
+from app.api.routers import artifacts as artifacts_routes
+from app.api.routers import config_models as config_models_routes
+from app.api.routers import standards as standards_routes
+from app.api.routers import projects as projects_routes
+from app.api.routers import customers as customers_routes
+from app.api.routers import compliance as compliance_routes
+from app.api.routers import bom as bom_routes
+from app.api.routers import advanced as advanced_routes
 
 
 logger = logging.getLogger(__name__)
@@ -27,21 +39,37 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later
+    allow_origins=["*"],  # TODO: tighten this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(ingest.router)
-app.include_router(drawings.router)  # ⬅ exposes /drawings/summarize
-app.include_router(search_routes.router)
-app.include_router(chat_routes.router)
-app.include_router(config_routes.router) 
+# ---------------------------------------------------------------------------
+# Routers (all mounted under /api/v1)
+# ---------------------------------------------------------------------------
+
+# Existing core functionality
+app.include_router(ingest.router, prefix="/api/v1")
+app.include_router(drawings.router, prefix="/api/v1")        # /api/v1/drawings/...
+app.include_router(search_routes.router, prefix="/api/v1")   # /api/v1/search/...
+app.include_router(chat_routes.router, prefix="/api/v1")     # /api/v1/chat/...
+app.include_router(config_routes.router, prefix="/api/v1")   # /api/v1/config/...
+
+# New API surface for frontend
+app.include_router(artifacts_routes.router, prefix="/api/v1")
+app.include_router(config_models_routes.router, prefix="/api/v1")
+app.include_router(standards_routes.router, prefix="/api/v1")
+app.include_router(projects_routes.router, prefix="/api/v1")
+app.include_router(customers_routes.router, prefix="/api/v1")
+app.include_router(compliance_routes.router, prefix="/api/v1")
+app.include_router(bom_routes.router, prefix="/api/v1")
+app.include_router(advanced_routes.router, prefix="/api/v1")
+
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
+    """
+    Simple health check endpoint for monitoring / readiness probes.
+    """
     return {"status": "ok"}
-
-

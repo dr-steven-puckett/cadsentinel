@@ -24,7 +24,7 @@ from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from pgvector.sqlalchemy import Vector
 
-from .base import Base
+from app.db.base import Base
 
 
 # =========================================================
