@@ -19,8 +19,7 @@ from app.db.models import (
 )
 
 from app.services.ai_providers import SummaryProvider
-from app.services.embeddings import embed_texts, EMBEDDING_MODEL
-
+from app.services.embeddings import embed_texts, EMBEDDING_MODEL, get_current_embedding_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -431,6 +430,9 @@ async def _generate_all_embeddings(
     # -----------------------------------------------------
     # 3. Insert Embedding rows
     # -----------------------------------------------------
+
+    current_embedding_model = get_current_embedding_model_name()
+    provider = get_effective_providers()["embedding"]
     for (source_type, ref_id, text), vec in zip(content_pieces, vectors):
         row = Embedding(
             drawing_version_id=version_id,
@@ -438,7 +440,8 @@ async def _generate_all_embeddings(
             source_ref_id=ref_id,
             content=text,
             embedding=vec,
-            model_name=EMBEDDING_MODEL,  # from app.services.embeddings
+            model_name=current_embedding_model,  # based on security switch
+            metadata={"provider": provider},
         )
         db.add(row)
         embeddings_created += 1

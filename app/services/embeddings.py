@@ -10,8 +10,6 @@ from app.services.security_mode import get_effective_providers
 
 settings = get_settings()
 
-settings = get_settings()
-
 # Determine current embedding model name based on security mode (OpenAI vs Ollama)
 def get_current_embedding_model_name() -> str:
     providers = get_effective_providers()
@@ -25,7 +23,7 @@ def get_current_embedding_model_name() -> str:
         return settings.ollama_embedding_model or "ollama-embedding"
     else:
         return "unknown"
-    
+
 
 # Backwards-compatible constant used by ETL when inserting Embedding.model_name
 EMBEDDING_MODEL: str = get_current_embedding_model_name()
@@ -35,11 +33,6 @@ EMBEDDING_DIM: int = getattr(settings, "embedding_dim", 1536)
 
 # Single shared OpenAI client (uses OPENAI_API_KEY env var or settings)
 _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-OPENAI_EMBEDDING_MODEL = settings.openai_embedding_model
-
-# Single shared OpenAI client (uses OPENAI_API_KEY env var or settings)
-_openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
 OPENAI_EMBEDDING_MODEL = settings.openai_embedding_model
 
 
