@@ -18,9 +18,8 @@ from app.config import get_settings
 from app.db.base import Base
 from app.db import models  # noqa: F401 - import models so Base.metadata is populated
 
-
 # This is the Alembic Config object, which provides access
-# to the values within the .ini file in use.    
+# to the values within the .ini file in use.
 config = context.config
 
 # Interpret the config file for Python logging.
@@ -32,6 +31,28 @@ settings = get_settings()
 
 # Use your application's metadata for autogenerate support
 target_metadata = Base.metadata
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Control which DB objects Alembic considers when autogenerating migrations.
+
+    We explicitly IGNORE a few manually-managed indexes on the `embeddings` table
+    that are created outside of SQLAlchemy (e.g., pgvector / trigram indexes):
+
+      - idx_embeddings_vector_ivfflat
+      - ix_embeddings_content_trgm
+      - ix_embeddings_embedding_ivfflat
+    """
+    if type_ == "index" and name in (
+        "idx_embeddings_vector_ivfflat",
+        "ix_embeddings_content_trgm",
+        "ix_embeddings_embedding_ivfflat",
+    ):
+        # Don't treat these as schema diffs (keep them as-is in the DB)
+        return False
+
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -47,6 +68,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,  # <- ignore special indexes
     )
 
     with context.begin_transaction():
@@ -69,6 +91,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            include_object=include_object,  # <- ignore special indexes
         )
 
         with context.begin_transaction():
@@ -79,4 +102,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
