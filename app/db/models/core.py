@@ -129,6 +129,13 @@ class DrawingVersion(Base):
         cascade="all, delete-orphan",
     )
 
+    text_chunks = relationship(
+        "DrawingTextChunk",
+        back_populates="drawing_version",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     __table_args__ = (
         # Only one active version per drawing
         UniqueConstraint(

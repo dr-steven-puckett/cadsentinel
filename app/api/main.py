@@ -23,6 +23,8 @@ from app.api.routers import customers as customers_routes
 from app.api.routers import compliance as compliance_routes
 from app.api.routers import bom as bom_routes
 from app.api.routers import advanced as advanced_routes
+from app.api.routers import customers as customers_router
+from app.api.routers import standards as standards_router
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +67,8 @@ app.include_router(customers_routes.router, prefix="/api/v1")
 app.include_router(compliance_routes.router, prefix="/api/v1")
 app.include_router(bom_routes.router, prefix="/api/v1")
 app.include_router(advanced_routes.router, prefix="/api/v1")
-
+app.include_router(customers_router.router, prefix="/api/v1")
+app.include_router(standards_router.router, prefix="/api/v1")
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
